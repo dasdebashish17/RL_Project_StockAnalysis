@@ -38,7 +38,8 @@ as the overall state. These measures can be:
  Moving average over multiple time frames might be needed to capture the long term (trend) and the short term fluctuations.
  Bolinger band cross overs can be useful to confirm the BUY/SELL actions.
 """
-
+!pip install nsepython
+!pip install plotly
 import datetime
 
 from nsepython import *
