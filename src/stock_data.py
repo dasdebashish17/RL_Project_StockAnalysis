@@ -37,6 +37,7 @@ as the overall state. These measures can be:
  * Minima over multiple time frames (2 months/4 months/6 months)
  Moving average over multiple time frames might be needed to capture the long term (trend) and the short term fluctuations.
  Bolinger band cross overs can be useful to confirm the BUY/SELL actions.
+
 """
 !pip install nsepython
 !pip install plotly
@@ -46,6 +47,7 @@ from nsepython import *
 
 import plotly.graph_objects as go
 
+from stock_indicators import indicators, Quote # https://python.stockindicators.dev/indicators/#content
 
 class StockData:
     """
@@ -79,6 +81,41 @@ class StockData:
         Fetch the historic data associated with the stock symbol
         """
         self.stock_df = equity_history(self.symbol, self.series, self.start_data, self.end_date)
+        #!!! We may need to normalize the mean to ZERO !!!
+
+
+    def normalize_data(self):
+        """
+        Normalize the mean to ZERO
+        :return:
+        """
+        self.stock_df['Close'] = self.stock_df['Close']
+
+
+    def update_quotes(self):
+        """
+        Update the quote list needed for generating indicators
+        :return:
+        """
+        datetime_list = []
+        for date_str in self.stock_df['CH_TIMESTAMP']:
+            year, month, date = re.findall("(\d+)-(\d+)-(\d+)", date_str)[0]
+            datetime_list.append(datetime.datetime(int(year), int(month), int(date), 0, 0, 0))
+
+        self.quotes_list = [ Quote(date, open, high, low, close, volume)
+                             for date, open, high, low, close, volume
+                             in zip(datetime_list, self.stock_df['CH_OPENING_PRICE'], self.stock_df['CH_TRADE_HIGH_PRICE'],
+                                    self.stock_df['CH_TRADE_LOW_PRICE'], self.stock_df['CH_CLOSING_PRICE'], self.stock_df['CH_TOT_TRADED_QTY'])
+                             ]
+
+    def generate_indicators(self):
+        """
+        Generate various indicators from the captured stock data
+        :return:
+        """
+        self.update_quotes()
+        macd_results = indicators.get_macd(self.quotes_list, 12, 26, 9)
+        self.macd_data = [r.macd for r in macd_results]
 
 
     def plot_data(self):
@@ -103,3 +140,4 @@ if __name__ == '__main__':
     stock_obj.set_history_duration(365)
     stock_obj.fetch_data()
     stock_obj.plot_data() # this is needed only to visualize the data
+    stock_obj.generate_indicators()
