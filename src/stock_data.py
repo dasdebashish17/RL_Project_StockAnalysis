@@ -38,9 +38,14 @@ as the overall state. These measures can be:
  Moving average over multiple time frames might be needed to capture the long term (trend) and the short term fluctuations.
  Bolinger band cross overs can be useful to confirm the BUY/SELL actions.
 
+# A thought that occur!
+* We can use the indicators with various other information to determine when was the best time to buy and sell the stocks.
+  Then based on the learning, we can train the RL agent to perform the learning
 """
-!pip install nsepython
-!pip install plotly
+
+
+#!pip install nsepython
+#!pip install plotly
 import datetime
 
 from nsepython import *
@@ -108,14 +113,46 @@ class StockData:
                                     self.stock_df['CH_TRADE_LOW_PRICE'], self.stock_df['CH_CLOSING_PRICE'], self.stock_df['CH_TOT_TRADED_QTY'])
                              ]
 
+    def generate_macd_indicators(self):
+        """
+        generate the macd indicator for the stocks
+        :return:
+        """
+        macd_results = indicators.get_macd(self.quotes_list, 12, 26, 9)
+        self.macd_data = [r.macd for r in macd_results]
+
+
+    def generate_bolinger_band_indicators(self):
+        """
+        generate the bolinger band indicator for the stocks
+        :return:
+        """
+        self.bolinger_band_data = {}
+        bolinger_band_results = indicators.get_bollinger_bands(self.quotes_list, 20, 2)
+        self.bolinger_band_data["sma"] = [r.sma for r in bolinger_band_results]
+        self.bolinger_band_data["lower_band"] = [r.lower_band for r in bolinger_band_results]
+        self.bolinger_band_data["upper_band"] = [r.upper_band for r in bolinger_band_results]
+
+
+    def generate_rsi_indicators(self):
+        """
+        generate the rsi indicator for the stocks
+        :return:
+        """
+        rsi_results = indicators.get_rsi(self.quotes_list, 14)
+        self.rsi_data = [r.rsi for r in rsi_results]
+
+
     def generate_indicators(self):
         """
         Generate various indicators from the captured stock data
         :return:
         """
         self.update_quotes()
-        macd_results = indicators.get_macd(self.quotes_list, 12, 26, 9)
-        self.macd_data = [r.macd for r in macd_results]
+        self.generate_macd_indicators()
+        self.generate_bolinger_band_indicators()
+        self.generate_rsi_indicators()
+        return
 
 
     def plot_data(self):
@@ -141,3 +178,79 @@ if __name__ == '__main__':
     stock_obj.fetch_data()
     stock_obj.plot_data() # this is needed only to visualize the data
     stock_obj.generate_indicators()
+
+
+
+
+
+class StockTrajectory:
+    def __init__(self, stock_name):
+        """
+        Initialize the stock data object
+        :param stock_name: stock whose data needs to monitored
+        """
+        self.stock_data_obj = StockData(stock_name)
+
+
+    def set_time_frame(self, duration_in_days=365):
+        """
+        set the past duration to capture the data
+        :param duration_in_days: durations for which history data needs to be captured
+        :return:
+        """
+        self.duration_in_days = duration_in_days
+
+
+    def process_data(self):
+        """
+        Process the data from the stock
+        :return:
+        """
+        self.stock_data_obj.set_history_duration(365)
+        self.stock_data_obj.fetch_data()
+        self.stock_data_obj.generate_indicators()
+
+
+    def reset(self):
+        """
+        set the reference to the oldest record available
+        :return:
+        """
+        self.record_idx = 0
+        self.capital_invested = 0
+        self.nav = 0
+        self.quantity = 0
+
+
+    def update_stock_params(self):
+        """
+        For the current record index, set the parameters associated with the stock data
+        :return:
+        """
+        self.high_price = self.stock_data_obj.stock_df['CH_TRADE_HIGH_PRICE'][self.record_idx]
+        self.low_price = self.stock_data_obj.stock_df['CH_TRADE_LOW_PRICE'][self.record_idx]
+        self.open_price = self.stock_data_obj.stock_df['CH_OPENING_PRICE'][self.record_idx]
+        self.close_price = self.stock_data_obj.stock_df['CH_CLOSING_PRICE'][self.record_idx]
+
+
+    def invest_capital(self, capital:float):
+        """
+        Invest specified capital
+        :param capital: capital to invest
+        :return:
+        """
+        # increment the capital invested
+        self.capital_invested += capital
+        # calculate the NAVs for the purchase
+        self.nav = (capital / self.close_price)
+        # increment the holding quantity
+        self.quantity += (capital / self.nav)
+
+
+    def step(self, action:int):
+        """
+        take a step abd update the next state
+        :param action: (SELL, HOLD, BUY) which maps to (-1, 0, 1)
+        :return: reward calculated as next_day_closing - current_day_closing
+        """
+        pass
