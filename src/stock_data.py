@@ -220,6 +220,7 @@ class StockTrajectory:
         self.capital_invested = 0
         self.nav = 0
         self.quantity = 0
+        self.capital_amount = 0
 
 
     def update_stock_params(self):
@@ -231,6 +232,15 @@ class StockTrajectory:
         self.low_price = self.stock_data_obj.stock_df['CH_TRADE_LOW_PRICE'][self.record_idx]
         self.open_price = self.stock_data_obj.stock_df['CH_OPENING_PRICE'][self.record_idx]
         self.close_price = self.stock_data_obj.stock_df['CH_CLOSING_PRICE'][self.record_idx]
+
+
+    def set_total_capital(self, capital_amount=100000):
+        """
+        set the total capital amount available. Either it is completely invested or completely withdrawn
+        :param capital_amount: total capital
+        :return:
+        """
+        self.capital_amount = capital_amount
 
 
     def invest_capital(self, capital:float):
@@ -247,10 +257,26 @@ class StockTrajectory:
         self.quantity += (capital / self.nav)
 
 
+    def calc_reward(self):
+        """
+        calculate the reward due to our current action
+        :return:
+        """
+        reward = 0  # THIS NEEDS TO BE UPDATED
+        return reward
+
+
     def step(self, action:int):
         """
         take a step abd update the next state
         :param action: (SELL, HOLD, BUY) which maps to (-1, 0, 1)
         :return: reward calculated as next_day_closing - current_day_closing
         """
-        pass
+        if action == 1: # BUY
+            self.invest_capital(self.capital_amount)
+        elif action == -1: # SELL
+            self.invest_capital(-self.capital_amount)
+
+        reward = self.calc_reward()
+
+        return reward
