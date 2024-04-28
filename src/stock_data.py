@@ -48,6 +48,7 @@ as the overall state. These measures can be:
 #!pip install plotly
 import datetime
 
+from matplotlib import pyplot as plt
 from nsepython import *
 
 import plotly.graph_objects as go
@@ -190,6 +191,7 @@ class StockTrajectory:
         :param stock_name: stock whose data needs to monitored
         """
         self.stock_data_obj = StockData(stock_name)
+        self.num_trading_days = 0
 
 
     def set_time_frame(self, duration_in_days=365):
@@ -201,14 +203,24 @@ class StockTrajectory:
         self.duration_in_days = duration_in_days
 
 
+    def set_total_capital(self, capital_amount=100000):
+        """
+        set the total capital amount available. Either it is completely invested or completely withdrawn
+        :param capital_amount: total capital
+        :return:
+        """
+        self.capital_amount = capital_amount
+
+
     def process_data(self):
         """
         Process the data from the stock
         :return:
         """
-        self.stock_data_obj.set_history_duration(365)
+        self.stock_data_obj.set_history_duration(self.duration_in_days)
         self.stock_data_obj.fetch_data()
         self.stock_data_obj.generate_indicators()
+        self.num_trading_days = self.stock_data_obj.stock_df.shape[0]
 
 
     def reset(self):
@@ -216,11 +228,10 @@ class StockTrajectory:
         set the reference to the oldest record available
         :return:
         """
-        self.record_idx = 0
+        self.record_idx = self.num_trading_days - 1
         self.capital_invested = 0
-        self.nav = 0
+        self.nav_at_purchase = 0
         self.quantity = 0
-        self.capital_amount = 0
 
 
     def update_stock_params(self):
@@ -232,15 +243,8 @@ class StockTrajectory:
         self.low_price = self.stock_data_obj.stock_df['CH_TRADE_LOW_PRICE'][self.record_idx]
         self.open_price = self.stock_data_obj.stock_df['CH_OPENING_PRICE'][self.record_idx]
         self.close_price = self.stock_data_obj.stock_df['CH_CLOSING_PRICE'][self.record_idx]
-
-
-    def set_total_capital(self, capital_amount=100000):
-        """
-        set the total capital amount available. Either it is completely invested or completely withdrawn
-        :param capital_amount: total capital
-        :return:
-        """
-        self.capital_amount = capital_amount
+        self.close_price_next = self.stock_data_obj.stock_df['CH_CLOSING_PRICE'][self.record_idx-1]
+        self.close_price_prev = self.stock_data_obj.stock_df['CH_CLOSING_PRICE'][min(self.num_trading_days-1, self.record_idx+1)]
 
 
     def invest_capital(self, capital:float):
@@ -249,12 +253,27 @@ class StockTrajectory:
         :param capital: capital to invest
         :return:
         """
-        # increment the capital invested
-        self.capital_invested += capital
         # calculate the NAVs for the purchase
-        self.nav = (capital / self.close_price)
+        self.nav_at_purchase = self.close_price
         # increment the holding quantity
-        self.quantity += (capital / self.nav)
+        self.quantity += int(capital / self.nav_at_purchase)
+        # increment the capital invested
+        self.capital_invested += (self.quantity * self.nav_at_purchase)
+
+
+    def withdraw_capital(self):
+        """
+        Currently we assume that we withdraw entire capital
+        :return:
+        """
+        # increment the capital invested
+        self.capital_invested = 0
+        # calculate the NAVs for the purchase
+        self.nav_at_purchase = 0
+        # increment the holding quantity
+        self.quantity = 0
+        # set current NAV
+        self.nav_at_sell = self.close_price
 
 
     def calc_reward(self):
@@ -262,7 +281,8 @@ class StockTrajectory:
         calculate the reward due to our current action
         :return:
         """
-        reward = 0  # THIS NEEDS TO BE UPDATED
+        # next day closing price - current day closing price
+        reward = self.close_price_next - self.close_price
         return reward
 
 
@@ -272,11 +292,55 @@ class StockTrajectory:
         :param action: (SELL, HOLD, BUY) which maps to (-1, 0, 1)
         :return: reward calculated as next_day_closing - current_day_closing
         """
+        # as we are considering single time lumpsum investment/withdrawal, buy/hold have same return.
+        self.update_stock_params()
+
+        # this can be modified late based on the use-case
         if action == 1: # BUY
             self.invest_capital(self.capital_amount)
         elif action == -1: # SELL
-            self.invest_capital(-self.capital_amount)
+            self.withdraw_capital()
 
         reward = self.calc_reward()
+        # scale reward to number to quantities purchased
+        reward_scaled = reward * self.quantity
 
-        return reward
+        # decrement the record index to next date
+        self.record_idx -= 1
+
+        return reward_scaled
+
+
+if __name__ == '__main__':
+    trajectory_obj = StockTrajectory("SBIN")
+    trajectory_obj.set_time_frame(365)
+    trajectory_obj.set_total_capital(100000)
+    trajectory_obj.process_data()
+    trajectory_obj.reset()
+
+    cumulative_reward = 0
+    return_trajectory = [100000]
+
+    reward = trajectory_obj.step(1)
+    print(reward)
+    return_trajectory.append(return_trajectory[-1]+reward)
+    cumulative_reward += reward
+
+    for _ in range(245):
+        reward = trajectory_obj.step(0)
+        print(reward)
+        return_trajectory.append(return_trajectory[-1] + reward)
+        cumulative_reward += reward
+
+    reward = trajectory_obj.step(-1)
+    print(reward)
+    return_trajectory.append(return_trajectory[-1] + reward)
+    cumulative_reward += reward
+
+    plt.plot(return_trajectory)
+    plt.show()
+
+
+
+
+
