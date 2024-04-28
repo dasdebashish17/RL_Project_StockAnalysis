@@ -44,9 +44,11 @@ as the overall state. These measures can be:
 """
 
 
-#!pip install nsepython
-#!pip install plotly
+# !pip install nsepython
+# !pip install plotly
 import datetime
+import pandas as pd
+import numpy as np
 
 from matplotlib import pyplot as plt
 from nsepython import *
@@ -79,7 +81,7 @@ class StockData:
         self.history_duration = days
         end_data = datetime.datetime.now().strftime("%d-%m-%Y")
         self.end_date = str(end_data)
-        self.start_data = (datetime.datetime.now() - datetime.timedelta(days=365)).strftime("%d-%m-%Y")
+        self.start_data = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime("%d-%m-%Y")
 
 
     def fetch_data(self):
@@ -153,6 +155,13 @@ class StockData:
         self.generate_macd_indicators()
         self.generate_bolinger_band_indicators()
         self.generate_rsi_indicators()
+
+        self.all_inds = pd.DataFrame(self.bolinger_band_data, dtype=np.float32)
+        self.all_inds['rsi'] = self.rsi_data
+        self.all_inds['macd'] = self.macd_data
+        self.all_inds.dropna(inplace=True)
+        self.all_inds.reset_index(drop=True, inplace=True)
+        self.all_inds = self.all_inds[::-1]
         return
 
 
@@ -173,14 +182,12 @@ class StockData:
 
 
 
-if __name__ == '__main__':
-    stock_obj = StockData("SBIN")
-    stock_obj.set_history_duration(365)
-    stock_obj.fetch_data()
-    stock_obj.plot_data() # this is needed only to visualize the data
-    stock_obj.generate_indicators()
-
-
+# if __name__ == '__main__':
+#     stock_obj = StockData("SBIN")
+#     stock_obj.set_history_duration(365)
+#     stock_obj.fetch_data()
+#     stock_obj.plot_data() # this is needed only to visualize the data
+#     stock_obj.generate_indicators()
 
 
 
@@ -220,7 +227,8 @@ class StockTrajectory:
         self.stock_data_obj.set_history_duration(self.duration_in_days)
         self.stock_data_obj.fetch_data()
         self.stock_data_obj.generate_indicators()
-        self.num_trading_days = self.stock_data_obj.stock_df.shape[0]
+        self.num_trading_days = self.stock_data_obj.all_inds.shape[0]
+        print(self.num_trading_days)
 
 
     def reset(self):
@@ -232,6 +240,8 @@ class StockTrajectory:
         self.capital_invested = 0
         self.nav_at_purchase = 0
         self.quantity = 0
+
+        return self.stock_data_obj.all_inds.iloc[self.record_idx]
 
 
     def update_stock_params(self):
@@ -308,12 +318,17 @@ class StockTrajectory:
         # decrement the record index to next date
         self.record_idx -= 1
 
-        return reward_scaled
+        done = (self.record_idx==0)
+        # print(done, self.record_idx)
+
+        next_state = (self.stock_data_obj.all_inds.iloc[self.record_idx] if not done else None)
+
+        return reward_scaled, next_state, done
 
 
 if __name__ == '__main__':
     trajectory_obj = StockTrajectory("SBIN")
-    trajectory_obj.set_time_frame(365)
+    trajectory_obj.set_time_frame(730)
     trajectory_obj.set_total_capital(100000)
     trajectory_obj.process_data()
     trajectory_obj.reset()
@@ -321,21 +336,15 @@ if __name__ == '__main__':
     cumulative_reward = 0
     return_trajectory = [100000]
 
-    reward = trajectory_obj.step(1)
+    reward, next_state, done = trajectory_obj.step(1)
     print(reward)
     return_trajectory.append(return_trajectory[-1]+reward)
     cumulative_reward += reward
-
-    for _ in range(245):
-        reward = trajectory_obj.step(0)
-        print(reward)
+    done = False
+    while not done:
+        reward, next_state, done = trajectory_obj.step(0)
         return_trajectory.append(return_trajectory[-1] + reward)
         cumulative_reward += reward
-
-    reward = trajectory_obj.step(-1)
-    print(reward)
-    return_trajectory.append(return_trajectory[-1] + reward)
-    cumulative_reward += reward
 
     plt.plot(return_trajectory)
     plt.show()
