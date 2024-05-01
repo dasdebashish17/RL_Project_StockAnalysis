@@ -263,12 +263,16 @@ class StockTrajectory:
         :param capital: capital to invest
         :return:
         """
+        # total amount to invest is limited by self.capital_amount
+        investable_capital = min(self.capital_amount, capital)
         # calculate the NAVs for the purchase
         self.nav_at_purchase = self.close_price
-        # increment the holding quantity
-        self.quantity += int(capital / self.nav_at_purchase)
-        # increment the capital invested
-        self.capital_invested += (self.quantity * self.nav_at_purchase)
+        # calculate the holding quantity
+        self.quantity = int(investable_capital / self.nav_at_purchase)
+        # calculate the capital invested
+        self.capital_invested = (self.quantity * self.nav_at_purchase)
+        # reduce the investable capital amount
+        self.capital_amount -= self.capital_invested
 
 
     def withdraw_capital(self):
@@ -276,12 +280,10 @@ class StockTrajectory:
         Currently we assume that we withdraw entire capital
         :return:
         """
-        # increment the capital invested
+        # reset the capital invested
         self.capital_invested = 0
-        # calculate the NAVs for the purchase
-        self.nav_at_purchase = 0
         # increment the holding quantity
-        self.quantity = 0
+        # self.quantity = 0 <= this should not be done here as we are using this parameter to normalize the net return
         # set current NAV
         self.nav_at_sell = self.close_price
 
@@ -315,6 +317,14 @@ class StockTrajectory:
         # scale reward to number to quantities purchased
         reward_scaled = reward * self.quantity
 
+        #if selling action was performed
+        if action == -1:
+            #reset the stock quantity to zero as we would have sold our entire holding
+            self.quantity = 0
+            # reward calculation was based on (price_tomorrow - price_today).
+            # In case of selling, this becomes (price_today - price_tomorrow)
+            reward_scaled *= -1
+
         # decrement the record index to next date
         self.record_idx -= 1
 
@@ -337,6 +347,12 @@ if __name__ == '__main__':
     return_trajectory = [100000]
 
     reward, next_state, done = trajectory_obj.step(1)
+    print(reward)
+    reward, next_state, done = trajectory_obj.step(1)
+    print(reward)
+    reward, next_state, done = trajectory_obj.step(-1)
+    print(reward)
+    reward, next_state, done = trajectory_obj.step(-1)
     print(reward)
     return_trajectory.append(return_trajectory[-1]+reward)
     cumulative_reward += reward
